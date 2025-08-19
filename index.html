@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VPN Map — Secure Boot → Interactive World (1000+ lines)</title>
+<style>
+/* =============================================================================
+   THEME — Neon Green on Black (VPN aesthetic)
+   ========================================================================== */
+:root{
+  --bg:#000000;
+  --green:#39ff14;
+  --green-soft:rgba(57,255,20,.65);
+  --panel:rgba(7,27,5,.72);
+  --panel-soft:rgba(7,27,5,.45);
+  --line:rgba(57,255,20,.45);
+  --muted:rgba(200,255,200,.9);
+  --ocean:#062f3c;
+  --grid:rgba(255,255,255,.18);
+  --good:#39ff14;
+  --warn:#ffd166;
+  --bad:#ff6b6b;
+  --text:#d7ffd7;
+  --shadow:0 0 24px rgba(57,255,20,.18);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,ui-monospace;
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  overflow:hidden; user-select:none;
+}
+
+/* App background with subtle gradients */
+#app{
+  position:relative; width:100vw; height:100vh;
+  background:
+    radial-gradient(1200px 600px at 50% 15%, rgba(57,255,20,.08), transparent 60%),
+    radial-gradient(900px 500px at 80% 80%, rgba(57,255,20,.06), transparent 60%),
+    var(--bg);
+}
+
+/* Subtle grid overlay */
+#grid{
+  position:absolute; inset:0;
+  background:
+    linear-gradient(transparent 29px, rgba(57,255,20,.07) 30px, transparent 31px) 0 0/100% 30px,
+    linear-gradient(90deg, transparent 29px, rgba(57,255,20,.07) 30px, transparent 31px) 0 0/30px 100%;
+  mask-image: radial-gradient(80% 65% at 50% 50%, #000 60%, transparent);
+  opacity:.35; pointer-events:none;
+}
+
+/* Floating neon particles */
+#particles{
+  position:absolute; inset:0; pointer-events:none; z-index:0;
+}
+
+/* Pages */
+.page{
+  position:absolute; inset:0; display:none;
+  align-items:center; justify-content:center; flex-direction:column; gap:14px; text-align:center;
+}
+.page.active{display:flex}
+
+/* Titles */
+h1,h2,h3{margin:0; letter-spacing:.08em; font-weight:900; text-shadow:0 0 10px var(--green),0 0 22px var(--green-soft); color:var(--green)}
+h1{font-size:clamp(28px,4.8vw,48px)}
+h2{font-size:clamp(22px,3.6vw,34px)}
+h3{font-size:clamp(18px,3vw,24px); color:var(--text)}
+
+/* Panels */
+.panel{
+  background:linear-gradient(180deg, rgba(7,27,5,.9), rgba(7,27,5,.4));
+  border:1px solid var(--line); border-radius:18px;
+  padding:18px 22px; box-shadow:var(--shadow), inset 0 0 10px rgba(0,0,0,.55);
+  backdrop-filter: blur(3px);
+}
+
+/* Rows + buttons */
+.row{display:flex; gap:12px; flex-wrap:wrap; justify-content:center}
+button{
+  background:rgba(0,0,0,.55); color:var(--green); border:2px solid var(--green);
+  border-radius:14px; padding:10px 16px; font-weight:900; letter-spacing:.06em; cursor:pointer;
+  transition:transform .08s ease, box-shadow .2s ease, background .2s ease, color .2s ease;
+  text-shadow:0 0 8px var(--green-soft);
+}
+button:hover{background:var(--green); color:#000; box-shadow:0 0 16px var(--green), inset 0 0 6px rgba(0,0,0,.6)}
+button:active{transform:translateY(1px) scale(.98)}
+
+/* ==== BOOT SCREEN ==== */
+.boot-steps{width:min(860px,95vw)}
+.bar{width:100%; height:14px; border:2px solid var(--green); border-radius:10px; overflow:hidden; box-shadow:0 0 10px rgba(57,255,20,.35) inset}
+.bar-fill{width:0%; height:100%; background:var(--green); box-shadow:0 0 12px var(--green); transition:width .25s ease}
+.boot-log{margin-top:8px; text-align:left; background:rgba(0,0,0,.55); border:1px solid var(--line); border-radius:14px; padding:10px 12px; height:min(44vh,320px); overflow:auto; white-space:pre-wrap}
+.ok{color:var(--good)} .warn{color:var(--warn)} .err{color:var(--bad)}
+.mono{font-family:ui-monospace, "Cascadia Code","Source Code Pro", Menlo, Consolas, monospace}
+
+/* ==== MAP LAYOUT ==== */
+#mapShell{
+  position:relative; width:100%; height:100%;
+  display:grid; grid-template-columns: 280px minmax(500px,1fr); grid-template-rows: auto 1fr;
+  gap:12px; padding:12px; box-sizing:border-box;
+}
+.topHUD{
+  grid-column:1/3; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px;
+  border:1px solid var(--line); border-radius:14px; background:linear-gradient(180deg, rgba(7,27,5,.7), rgba(7,27,5,.28));
+}
+.pill{padding:6px 10px; border:1px solid var(--line); border-radius:999px; background:linear-gradient(180deg, rgba(7,27,5,.7), rgba(7,27,5,.3)); font-weight:800; letter-spacing:.05em; text-shadow:0 0 6px var(--green-soft); color:var(--text)}
+.stats{display:flex; gap:8px; flex-wrap:wrap}
+.stats .pill{white-space:nowrap}
+
+/* Sidebar */
+.sidebar{
+  grid-column:1/2; grid-row:2/3; border:1px solid var(--line); border-radius:14px; background:var(--panel); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.sidebar h3{padding:10px 12px}
+.filterRow{display:flex; gap:8px; padding:0 12px 10px 12px}
+.input, .select{
+  flex:1; padding:8px 10px; border-radius:12px; border:1px solid var(--line); background:rgba(0,0,0,.5); color:var(--text); outline:none;
+  font-weight:700; letter-spacing:.02em;
+}
+.serverList{flex:1; overflow:auto; padding:8px 8px 12px}
+.item{
+  border:1px solid var(--line); border-radius:12px; padding:8px 10px; margin:6px 0; cursor:pointer; background:rgba(0,0,0,.4);
+  transition:background .2s ease, transform .06s ease;
+}
+.item:hover{background:rgba(0,0,0,.65)}
+.item:active{transform:scale(.98)}
+.item strong{color:var(--green)}
+.badge{display:inline-block; padding:2px 6px; border-radius:999px; border:1px solid var(--line); margin-left:6px; font-size:12px}
+
+/* Map panel */
+.mapWrap{
+  grid-column:2/3; grid-row:2/3; position:relative; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:var(--ocean); box-shadow:var(--shadow);
+}
+svg.world{width:100%; height:100%; display:block; background:var(--ocean)}
+.graticule line{stroke:var(--grid); stroke-width:.6}
+.land{fill:#0a2900; stroke:rgba(57,255,20,.55); stroke-width:.6}
+
+/* markers */
+.marker{transform-box:fill-box; transform-origin:center; animation:pop .6s cubic-bezier(.2,.7,.2,1.4) forwards; opacity:0}
+.marker circle.core{fill:var(--green)}
+.marker text{font:700 11px/1 ui-monospace, "Source Code Pro", Menlo, Consolas, monospace; fill:var(--green); paint-order:stroke; stroke:rgba(0,0,0,.85); stroke-width:2px; letter-spacing:.03em; pointer-events:none}
+.ring{fill:none; stroke-width:3.5}
+@keyframes pop{0%{opacity:0; transform:scale(0)} 60%{opacity:1; transform:scale(1.2)} 100%{opacity:1; transform:scale(1)}}
+.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{filter:drop-shadow(0 0 6px var(--green))} 50%{filter:drop-shadow(0 0 16px var(--green))}}
+
+/* connection path */
+.path{fill:none; stroke:var(--green); stroke-width:2; stroke-linecap:round; filter:drop-shadow(0 0 6px var(--green)); stroke-dasharray:6 8; opacity:.9}
+
+/* zoom controls */
+.zoomHUD{position:absolute; right:10px; bottom:10px; display:flex; flex-direction:column; gap:8px; z-index:3}
+.zoomHUD button{padding:8px 10px; width:44px}
+
+/* Tooltip */
+.tooltip{
+  position:absolute; pointer-events:none; z-index:5; transform:translate(-50%, -120%);
+  padding:8px 10px; border-radius:10px; border:1px solid var(--line);
+  background:rgba(0,0,0,.7); color:var(--text); font-weight:800; letter-spacing:.03em;
+  box-shadow:0 0 16px rgba(57,255,20,.25);
+  min-width:180px; text-align:left;
+}
+.tooltip .tt-title{color:var(--green); font-weight:900; margin-bottom:4px}
+.tooltip .tt-row{display:flex; justify-content:space-between; gap:8px; font-family:ui-monospace, Menlo, Consolas, monospace}
+.tooltip .tt-row span:first-child{opacity:.8}
+
+/* Ping sparkline */
+.sparkCard{
+  display:flex; align-items:center; gap:10px;
+  padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.45);
+}
+#sparkline{width:160px; height:40px}
+
+/* USB export shared styles */
+.term{margin-top:8px; text-align:left; background:rgba(0,0,0,.55); border:1px solid var(--line); border-radius:14px; padding:10px 12px; height:min(44vh,300px); overflow:auto; white-space:pre-wrap}
+
+/* Responsive */
+@media (max-width:980px){
+  #mapShell{grid-template-columns: 1fr; grid-template-rows: auto auto 1fr}
+  .sidebar{grid-column:1/2; grid-row:2/3}
+  .mapWrap{grid-column:1/2; grid-row:3/4}
+}
+</style>
+</head>
+<body>
+<div id="app" role="application" aria-label="VPN interactive map">
+  <!-- Particles canvas (background neon dust) -->
+  <canvas id="particles"></canvas>
+
+  <!-- Grid overlay -->
+  <div id="grid" aria-hidden="true"></div>
+
+  <!-- ================= SECURITY BOOT (pre-map loading) ================= -->
+  <section id="page-boot" class="page active">
+    <div class="panel boot-steps">
+      <h2>Securing Connection</h2>
+      <div class="bar" aria-label="security progress"><div id="bootBar" class="bar-fill"></div></div>
+      <div id="bootLog" class="boot-log mono" aria-live="polite"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="skipBoot">Skip</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= INTERACTIVE MAP LAYOUT ========================== -->
+  <section id="page-map" class="page" aria-label="VPN Map">
+    <div id="mapShell">
+      <div class="topHUD">
+        <div class="pill">Selected: <span id="selName">None</span></div>
+        <div class="stats">
+          <div class="pill">Ping: <span id="pingVal">—</span></div>
+          <div class="pill">Load: <span id="loadVal">—</span></div>
+          <div class="pill mono">IP: <span id="ipVal">0.0.0.0</span></div>
+          <div class="sparkCard">
+            <span style="font-weight:900">Ping graph</span>
+            <canvas id="sparkline" width="160" height="40"></canvas>
+          </div>
+        </div>
+        <div class="row">
+          <button id="btnUSB">Deploy to USB</button>
+          <button id="btnResetView">Reset View</button>
+        </div>
+      </div>
+
+      <!-- Sidebar with filterable server list -->
+      <aside class="sidebar">
+        <h3>Servers</h3>
+        <div class="filterRow">
+          <input id="filterText" class="input" placeholder="Filter by city/country"/>
+          <select id="filterRegion" class="select" title="Region filter">
+            <option value="all">All regions</option>
+            <option value="north-america">North America</option>
+            <option value="latin-america">Latin America</option>
+            <option value="europe">Europe</option>
+            <option value="mea">Middle East & Africa</option>
+            <option value="asia">Asia</option>
+            <option value="oceania">Oceania</option>
+          </select>
+        </div>
+        <div id="serverList" class="serverList"></div>
+      </aside>
+
+      <!-- Map panel -->
+      <div class="mapWrap panel">
+        <!-- SVG "flat" world canvas with Mercator coordinate system (960x500) -->
+        <svg id="world" class="world" viewBox="0 0 960 500" role="img" aria-labelledby="mapTitle">
+          <title id="mapTitle">World Map (Mercator) with interactive servers</title>
+          <defs>
+            <clipPath id="clip"><rect x="0" y="0" width="960" height="500" rx="16" ry="16"/></clipPath>
+          </defs>
+
+        <g id="viewport">
+          <!-- Graticule -->
+          <g class="graticule" clip-path="url(#clip)">
+            <!-- Verticals (every 20°) -->
+            <line x1="0" y1="0" x2="0" y2="500"/>
+            <line x1="80" y1="0" x2="80" y2="500"/>
+            <line x1="160" y1="0" x2="160" y2="500"/>
+            <line x1="240" y1="0" x2="240" y2="500"/>
+            <line x1="320" y1="0" x2="320" y2="500"/>
+            <line x1="400" y1="0" x2="400" y2="500"/>
+            <line x1="480" y1="0" x2="480" y2="500"/>
+            <line x1="560" y1="0" x2="560" y2="500"/>
+            <line x1="640" y1="0" x2="640" y2="500"/>
+            <line x1="720" y1="0" x2="720" y2="500"/>
+            <line x1="800" y1="0" x2="800" y2="500"/>
+            <line x1="880" y1="0" x2="880" y2="500"/>
+            <line x1="960" y1="0" x2="960" y2="500"/>
+            <!-- Horizontals (~10°) -->
+            <line x1="0" y1="0" x2="960" y2="0"/>
+            <line x1="0" y1="45" x2="960" y2="45"/>
+            <line x1="0" y1="90" x2="960" y2="90"/>
+            <line x1="0" y1="135" x2="960" y2="135"/>
+            <line x1="0" y1="180" x2="960" y2="180"/>
+            <line x1="0" y1="225" x2="960" y2="225"/>
+            <line x1="0" y1="270" x2="960" y2="270"/>
+            <line x1="0" y1="315" x2="960" y2="315"/>
+            <line x1="0" y1="360" x2="960" y2="360"/>
+            <line x1="0" y1="405" x2="960" y2="405"/>
+            <line x1="0" y1="450" x2="960" y2="450"/>
+            <line x1="0" y1="500" x2="960" y2="500"/>
+          </g>
+
+          <!-- Minimal world silhouettes (stylized). Marker positions are accurate via projection. -->
+          <g id="land" clip-path="url(#clip)">
+            <path class="land" d="M70,290 L120,260 L160,238 L190,220 L220,205 L260,190 L300,182 L340,182 L380,192 L412,210 L432,232 L446,260 L454,290 L456,320 L450,350 L434,372 L408,388 L370,396 L328,392 L292,382 L260,364 L228,342 L200,320 L168,308 L130,302 Z"/>
+            <path class="land" d="M560,180 L590,170 L620,158 L650,150 L680,152 L708,164 L728,182 L742,206 L748,236 L744,266 L730,292 L710,314 L686,330 L660,340 L628,344 L598,340 L572,328 L554,308 L544,286 L542,258 L548,228 Z"/>
+            <path class="land" d="M760,88 L788,80 L814,88 L836,104 L846,124 L846,146 L834,162 L812,170 L788,168 L768,156 L758,138 L756,114 Z"/>
+            <path class="land" d="M840,360 L860,352 L882,356 L900,370 L906,388 L898,404 L878,412 L858,408 L846,394 L842,378 Z"/>
+            <path class="land" d="M420,92 L440,82 L460,90 L470,108 L466,126 L450,134 L432,128 L424,110 Z"/>
+          </g>
+
+          <!-- Connection path + markers -->
+          <path id="connPath" class="path" d=""></path>
+          <g id="markers"></g>
+        </g>
+        </svg>
+
+        <!-- Tooltip (positioned near cursor) -->
+        <div id="tooltip" class="tooltip" style="display:none">
+          <div class="tt-title" id="ttName">—</div>
+          <div class="tt-row"><span>Ping</span><strong id="ttPing">—</strong></div>
+          <div class="tt-row"><span>Load</span><strong id="ttLoad">—</strong></div>
+          <div class="tt-row"><span>Coords</span><strong id="ttCoords">—</strong></div>
+        </div>
+
+        <!-- Zoom HUD -->
+        <div class="zoomHUD">
+          <button id="zoomIn" title="Zoom in">+</button>
+          <button id="zoomOut" title="Zoom out">−</button>
+          <button id="zoomReset" title="Reset view">⟳</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= USB EXPORT PAGE ================================= -->
+  <section id="page-usb" class="page" aria-label="USB export">
+    <div class="panel" style="max-width:860px">
+      <h2>Security Export to USB</h2>
+      <div class="bar"><div id="usbBar" class="bar-fill"></div></div>
+      <div id="usbLog" class="term mono"></div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnBackToMap">Back to Map</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* =========================================================================
+     UTILITIES
+     ========================================================================= */
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
+  const randInt = (a,b)=> (Math.random()*(b-a+1)+a)|0;
+  const randFloat=(a,b,d=0)=> Number((Math.random()*(b-a)+a).toFixed(d));
+  const ipRand = () => {
+    const o=()=> clamp(randInt(2,254),1,254);
+    return `${o()}.${o()}.${o()}.${o()}`;
+  };
+  function appendLog(el, text, cls=""){
+    const d = document.createElement('div');
+    d.className = cls ? cls : 'log-line';
+    d.innerHTML = text;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* =========================================================================
+     PARTICLES (neon dust)
+     ========================================================================= */
+  const pCanvas = $('#particles');
+  const pCtx = pCanvas.getContext('2d');
+  let P=[], praf;
+  function resizeParticles(){
+    pCanvas.width = window.innerWidth; pCanvas.height = window.innerHeight;
+    if(P.length===0){
+      const n = Math.floor((window.innerWidth*window.innerHeight)/25000);
+      for(let i=0;i<n;i++){
+        P.push({x:Math.random()*pCanvas.width,y:Math.random()*pCanvas.height,vx:randFloat(-.3,.3,2),vy:randFloat(-.3,.3,2),r:randFloat(0.6,1.8,1),a:randFloat(0.25,0.6,2)});
+      }
+    }
+  }
+  function drawParticles(){
+    pCtx.clearRect(0,0,pCanvas.width,pCanvas.height);
+    for(const p of P){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0) p.x=pCanvas.width; if(p.x>pCanvas.width) p.x=0;
+      if(p.y<0) p.y=pCanvas.height; if(p.y>pCanvas.height) p.y=0;
+      pCtx.beginPath(); pCtx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      pCtx.fillStyle=`rgba(57,255,20,${p.a})`; pCtx.fill();
+    }
+    praf=requestAnimationFrame(drawParticles);
+  }
+  window.addEventListener('resize', ()=>{ P=[]; resizeParticles(); });
+  resizeParticles(); drawParticles();
+
+  /* =========================================================================
+     PAGES
+     ========================================================================= */
+  const pages = {
+    boot: $('#page-boot'),
+    map:  $('#page-map'),
+    usb:  $('#page-usb')
+  };
+  function show(name){
+    for (const k in pages) pages[k].classList.toggle('active', k===name);
+  }
+
+  /* =========================================================================
+     BOOT (security loading)
+     ========================================================================= */
+  const bootBar = $('#bootBar');
+  const bootLog = $('#bootLog');
+  const skipBoot = $('#skipBoot');
+
+  const BOOT_SEQ = [
+    ["Initializing cryptographic module", 300],
+    ["Establishing secure channel", 380],
+    ["Encrypting packets (AES-256-GCM)", 420],
+    ["Rotating exit IP", 400],
+    ["Testing firewall bypass", 520],
+    ["Hardening DNS resolver", 380],
+    ["Sealing session keys", 420],
+    ["Final checks", 360],
+  ];
+
+  function bootRun(){
+    bootLog.textContent = "";
+    bootBar.style.width = "0%";
+    let t=150;
+    BOOT_SEQ.forEach(([txt, ms], i)=>{
+      setTimeout(()=>{
+        appendLog(bootLog, `${txt} … `, ""); 
+        setTimeout(()=> appendLog(bootLog, "OK", "ok"), 220);
+        const pct = Math.round(((i+1)/BOOT_SEQ.length)*100);
+        bootBar.style.width = pct+"%";
+        if(i===BOOT_SEQ.length-1){
+          setTimeout(()=> show('map'), 420);
+        }
+      }, t);
+      t += ms;
+    });
+  }
+  skipBoot.onclick = ()=> show('map');
+
+  /* =========================================================================
+     MAP / PROJECTION / ZOOM-PAN
+     ========================================================================= */
+  const world = $('#world');
+  const viewport = $('#viewport');
+  const markersG = $('#markers');
+  const connPath = $('#connPath');
+  const tooltip = $('#tooltip');
+  const ttName = $('#ttName'), ttPing=$('#ttPing'), ttLoad=$('#ttLoad'), ttCoords=$('#ttCoords');
+
+  const W=960, H=500, MAX_LAT=85.05113;
+  let scale=1, minScale=.8, maxScale=6;
+  let tx=0, ty=0;
+
+  function applyTransform(){ viewport.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`); }
+  function clientToSVGPoint(clientX, clientY){
+    const pt = world.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    const ctm = world.getScreenCTM().inverse();
+    return pt.matrixTransform(ctm);
+  }
+  function project(lon, lat){
+    const x = (lon+180)/360 * W;
+    const φ = clamp(lat, -MAX_LAT, MAX_LAT) * Math.PI/180;
+    const y = (1 - Math.log(Math.tan(Math.PI/4 + φ/2))/Math.PI)/2 * H;
+    return [x,y];
+  }
+  function zoomAt(svgX, svgY, dz){
+    const newScale = clamp(scale*dz, minScale, maxScale);
+    tx = svgX - (svgX - tx) * (newScale/scale);
+    ty = svgY - (svgY - ty) * (newScale/scale);
+    scale=newScale; applyTransform();
+  }
+
+  // Wheel zoom
+  world.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const p = clientToSVGPoint(e.clientX, e.clientY);
+    zoomAt(p.x, p.y, e.deltaY<0 ? 1.15 : 1/1.15);
+  }, {passive:false});
+
+  // Drag pan
+  let panning=false, lx=0, ly=0;
+  world.addEventListener('mousedown', e=>{ panning=true; lx=e.clientX; ly=e.clientY; hideTip(); });
+  window.addEventListener('mousemove', e=>{
+    if(!panning) return;
+    const dx=e.clientX-lx, dy=e.clientY-ly; lx=e.clientX; ly=e.clientY;
+    tx+=dx; ty+=dy; applyTransform();
+  });
+  window.addEventListener('mouseup', ()=> panning=false);
+
+  // Touch pan (simple one-finger)
+  world.addEventListener('touchstart', e=>{
+    if(e.touches.length===1){ lx=e.touches[0].clientX; ly=e.touches[0].clientY; hideTip(); }
+  }, {passive:true});
+  world.addEventListener('touchmove', e=>{
+    if(e.touches.length===1){
+      const t=e.touches[0]; const dx=t.clientX-lx, dy=t.clientY-ly;
+      lx=t.clientX; ly=t.clientY; tx+=dx; ty+=dy; applyTransform();
+    }
+  }, {passive:true});
+
+  // HUD buttons
+  $('#zoomIn').onclick = ()=> zoomAt(W/2, H/2, 1.2);
+  $('#zoomOut').onclick= ()=> zoomAt(W/2, H/2, 1/1.2);
+  $('#zoomReset').onclick= ()=> { scale=1; tx=0; ty=0; applyTransform(); };
+  $('#btnResetView').onclick = ()=> { scale=1; tx=0; ty=0; applyTransform(); };
+
+  function showTip(x,y,name,ping,load,lat,lon){
+    tooltip.style.display='block';
+    tooltip.style.left = x+'px'; tooltip.style.top = y+'px';
+    ttName.textContent = name;
+    ttPing.textContent = ping+" ms";
+    ttLoad.textContent = load+"%";
+    ttCoords.textContent = `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+  }
+  function hideTip(){ tooltip.style.display='none'; }
+
+  /* =========================================================================
+     SERVERS (60 total) + REGIONS
+     ========================================================================= */
+  const REG = {
+    "north-america":"North America",
+    "latin-america":"Latin America",
+    "europe":"Europe",
+    "mea":"Middle East & Africa",
+    "asia":"Asia",
+    "oceania":"Oceania"
+  };
+
+  const SERVERS = [
+    // --- North America (10) ---
+    {name:"New York, USA", lat:40.7128, lon:-74.0060, region:"north-america"},
+    {name:"Los Angeles, USA", lat:34.0522, lon:-118.2437, region:"north-america"},
+    {name:"Chicago, USA", lat:41.8781, lon:-87.6298, region:"north-america"},
+    {name:"Houston, USA", lat:29.7604, lon:-95.3698, region:"north-america"},
+    {name:"Miami, USA", lat:25.7617, lon:-80.1918, region:"north-america"},
+    {name:"Seattle, USA", lat:47.6062, lon:-122.3321, region:"north-america"},
+    {name:"San Francisco, USA", lat:37.7749, lon:-122.4194, region:"north-america"},
+    {name:"Toronto, Canada", lat:43.65107, lon:-79.347015, region:"north-america"},
+    {name:"Vancouver, Canada", lat:49.2827, lon:-123.1207, region:"north-america"},
+    {name:"Montreal, Canada", lat:45.5017, lon:-73.5673, region:"north-america"},
+
+    // --- Latin America (10) ---
+    {name:"Mexico City, Mexico", lat:19.4326, lon:-99.1332, region:"latin-america"},
+    {name:"Guadalajara, Mexico", lat:20.6597, lon:-103.3496, region:"latin-america"},
+    {name:"Bogotá, Colombia", lat:4.7110, lon:-74.0721, region:"latin-america"},
+    {name:"Medellín, Colombia", lat:6.2442, lon:-75.5812, region:"latin-america"},
+    {name:"Lima, Peru", lat:-12.0464, lon:-77.0428, region:"latin-america"},
+    {name:"Santiago, Chile", lat:-33.4489, lon:-70.6693, region:"latin-america"},
+    {name:"São Paulo, Brazil", lat:-23.5558, lon:-46.6396, region:"latin-america"},
+    {name:"Rio de Janeiro, Brazil", lat:-22.9068, lon:-43.1729, region:"latin-america"},
+    {name:"Buenos Aires, Argentina", lat:-34.6037, lon:-58.3816, region:"latin-america"},
+    {name:"Quito, Ecuador", lat:-0.1807, lon:-78.4678, region:"latin-america"},
+
+    // --- Europe (16) ---
+    {name:"London, UK", lat:51.5074, lon:-0.1278, region:"europe"},
+    {name:"Manchester, UK", lat:53.4808, lon:-2.2426, region:"europe"},
+    {name:"Paris, France", lat:48.8566, lon:2.3522, region:"europe"},
+    {name:"Berlin, Germany", lat:52.5200, lon:13.4050, region:"europe"},
+    {name:"Munich, Germany", lat:48.1351, lon:11.5820, region:"europe"},
+    {name:"Madrid, Spain", lat:40.4168, lon:-3.7038, region:"europe"},
+    {name:"Barcelona, Spain", lat:41.3874, lon:2.1686, region:"europe"},
+    {name:"Rome, Italy", lat:41.9028, lon:12.4964, region:"europe"},
+    {name:"Amsterdam, Netherlands", lat:52.3676, lon:4.9041, region:"europe"},
+    {name:"Dublin, Ireland", lat:53.3498, lon:-6.2603, region:"europe"},
+    {name:"Zurich, Switzerland", lat:47.3769, lon:8.5417, region:"europe"},
+    {name:"Stockholm, Sweden", lat:59.3293, lon:18.0686, region:"europe"},
+    {name:"Oslo, Norway", lat:59.9139, lon:10.7522, region:"europe"},
+    {name:"Copenhagen, Denmark", lat:55.6761, lon:12.5683, region:"europe"},
+    {name:"Vienna, Austria", lat:48.2082, lon:16.3738, region:"europe"},
+    {name:"Prague, Czechia", lat:50.0755, lon:14.4378, region:"europe"},
+
+    // --- MEA (8) ---
+    {name:"Dubai, UAE", lat:25.2048, lon:55.2708, region:"mea"},
+    {name:"Abu Dhabi, UAE", lat:24.4539, lon:54.3773, region:"mea"},
+    {name:"Istanbul, Turkey", lat:41.0082, lon:28.9784, region:"mea"},
+    {name:"Cairo, Egypt", lat:30.0444, lon:31.2357, region:"mea"},
+    {name:"Riyadh, Saudi Arabia", lat:24.7136, lon:46.6753, region:"mea"},
+    {name:"Tel Aviv, Israel", lat:32.0853, lon:34.7818, region:"mea"},
+    {name:"Johannesburg, South Africa", lat:-26.2041, lon:28.0473, region:"mea"},
+    {name:"Nairobi, Kenya", lat:-1.2921, lon:36.8219, region:"mea"},
+
+    // --- Asia (12) ---
+    {name:"Mumbai, India", lat:19.0760, lon:72.8777, region:"asia"},
+    {name:"Delhi, India", lat:28.6139, lon:77.2090, region:"asia"},
+    {name:"Singapore", lat:1.3521, lon:103.8198, region:"asia"},
+    {name:"Beijing, China", lat:39.9042, lon:116.4074, region:"asia"},
+    {name:"Shanghai, China", lat:31.2304, lon:121.4737, region:"asia"},
+    {name:"Hong Kong", lat:22.3193, lon:114.1694, region:"asia"},
+    {name:"Tokyo, Japan", lat:35.6762, lon:139.6503, region:"asia"},
+    {name:"Osaka, Japan", lat:34.6937, lon:135.5023, region:"asia"},
+    {name:"Seoul, South Korea", lat:37.5665, lon:126.9780, region:"asia"},
+    {name:"Bangkok, Thailand", lat:13.7563, lon:100.5018, region:"asia"},
+    {name:"Kuala Lumpur, Malaysia", lat:3.1390, lon:101.6869, region:"asia"},
+    {name:"Jakarta, Indonesia", lat:-6.2088, lon:106.8456, region:"asia"},
+
+    // --- Oceania (4) ---
+    {name:"Sydney, Australia", lat:-33.8688, lon:151.2093, region:"oceania"},
+    {name:"Melbourne, Australia", lat:-37.8136, lon:144.9631, region:"oceania"},
+    {name:"Brisbane, Australia", lat:-27.4698, lon:153.0251, region:"oceania"},
+    {name:"Auckland, New Zealand", lat:-36.8485, lon:174.7633, region:"oceania"}
+  ];
+
+  /* =========================================================================
+     SIDEBAR RENDER / FILTER
+     ========================================================================= */
+  const serverList = $('#serverList');
+  const filterText = $('#filterText');
+  const filterRegion = $('#filterRegion');
+
+  function serverMatches(s){
+    const txt = filterText.value.trim().toLowerCase();
+    const region = filterRegion.value;
+    const matchTxt = !txt || s.name.toLowerCase().includes(txt);
+    const matchRegion = (region==='all') || (s.region===region);
+    return matchTxt && matchRegion;
+  }
+
+  function renderServerList(){
+    serverList.innerHTML='';
+    SERVERS.filter(serverMatches).forEach(s=>{
+      const div = document.createElement('div');
+      div.className='item';
+      div.innerHTML = `<strong>${s.name}</strong> <span class="badge">${REG[s.region]}</span>`;
+      div.onclick = ()=>{
+        // find matching SVG marker by name
+        const node = [...markersG.querySelectorAll('g.marker')].find(g => g.dataset.name === s.name);
+        if(node) selectServer(s, node);
+      };
+      serverList.appendChild(div);
+    });
+  }
+  filterText.addEventListener('input', renderServerList);
+  filterRegion.addEventListener('change', renderServerList);
+
+  /* =========================================================================
+     IP + HUD
+     ========================================================================= */
+  const ipVal = $('#ipVal'); ipVal.textContent = ipRand();
+  const selName = $('#selName');
+  const pingVal = $('#pingVal');
+  const loadVal = $('#loadVal');
+
+  /* =========================================================================
+     MARKERS + LOAD + TOOLTIP
+     ========================================================================= */
+  function colorForLoad(load){
+    if(load < 50) return getComputedStyle(document.documentElement).getPropertyValue('--good').trim();
+    if(load < 80) return getComputedStyle(document.documentElement).getPropertyValue('--warn').trim();
+    return getComputedStyle(document.documentElement).getPropertyValue('--bad').trim();
+  }
+
+  let selected = null, pingTimer=null, loadTick=null;
+  const pingHistory = []; // for sparkline
+
+  // tooltip positioning helper
+  function pageXY(evt){
+    return {x: evt.clientX, y: evt.clientY};
+  }
+
+  function clearMarkers(){ while(markersG.firstChild) markersG.removeChild(markersG.firstChild); }
+
+  function addMarker(s, idx=0){
+    const [x,y] = project(s.lon, s.lat);
+    const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.setAttribute('class','marker');
+    g.dataset.name = s.name;
+    g.style.animationDelay = `${idx*25}ms`;
+    g.setAttribute('transform', `translate(${x},${y})`);
+
+    // load ring
+    const ring = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    ring.setAttribute('class','ring');
+    ring.setAttribute('r','8'); ring.setAttribute('cx','0'); ring.setAttribute('cy','0');
+    const load = randInt(10,95);
+    ring.dataset.load = load;
+    ring.setAttribute('stroke', colorForLoad(load));
+
+    // core dot
+    const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute('class','core');
+    c.setAttribute('r','3.2'); c.setAttribute('cx','0'); c.setAttribute('cy','0');
+
+    // label
+    const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute('x','10'); t.setAttribute('y','-8');
+    t.textContent = s.name;
+
+    g.appendChild(ring); g.appendChild(c); g.appendChild(t);
+
+    // hover tooltip
+    g.addEventListener('mousemove', (e)=>{
+      const loadNow = ring.dataset.load|0;
+      const currentPing = pingVal.textContent.includes('ms') ? parseInt(pingVal.textContent) : randInt(20,120);
+      const {x:cx,y:cy} = pageXY(e);
+      showTip(cx, cy, s.name, currentPing, loadNow, s.lat, s.lon);
+    });
+    g.addEventListener('mouseleave', hideTip);
+
+    // select
+    g.addEventListener('click', ()=> selectServer(s, g));
+
+    markersG.appendChild(g);
+  }
+
+  function renderMarkers(){
+    clearMarkers();
+    SERVERS.forEach((s,i)=> addMarker(s,i));
+  }
+
+  /* =========================================================================
+     CONNECTION PATH + SELECT
+     ========================================================================= */
+  // Client (anchor) — NYC default (you can change or geolocate)
+  const CLIENT = { name:"Client Node", lat:40.7306, lon:-73.9352 };
+
+  function drawConnection(from, to){
+    const [x1,y1] = project(from.lon, from.lat);
+    const [x2,y2] = project(to.lon, to.lat);
+    const cx = (x1+x2)/2;
+    const cy = (y1+y2)/2 - 50 * Math.sign(y1 - y2);
+    const d = `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`;
+    connPath.setAttribute('d', d);
+  }
+
+  function selectServer(s, node){
+    selected = s;
+    selName.textContent = s.name;
+    // pulse selected marker core
+    [...markersG.querySelectorAll('g.marker')].forEach(g=> g.classList.remove('pulse'));
+    node.classList.add('pulse');
+    // draw path
+    drawConnection(CLIENT, s);
+    // center roughly on server
+    const [sx,sy] = project(s.lon, s.lat);
+    scale = 1.9;
+    tx = (world.viewBox.baseVal.width/2) - sx*scale;
+    ty = (world.viewBox.baseVal.height/2) - sy*scale;
+    applyTransform();
+    // start ping sim + load HUD
+    startPing();
+    // update load HUD from this node's ring
+    const ring = node.querySelector('circle.ring');
+    loadVal.textContent = ring ? (ring.dataset.load|0) + "%" : "—";
+  }
+
+  /* =========================================================================
+     PING SIM + SPARKLINE
+     ========================================================================= */
+  const spark = $('#sparkline');
+  const sctx = spark.getContext('2d');
+
+  function drawSpark(){
+    const w = spark.width, h = spark.height;
+    sctx.clearRect(0,0,w,h);
+    sctx.lineWidth = 2;
+    sctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--green').trim();
+    sctx.beginPath();
+    if(pingHistory.length===0) return;
+    const max = Math.max(...pingHistory, 60);
+    const min = Math.min(...pingHistory, 5);
+    const range = Math.max(max-min, 1);
+    pingHistory.forEach((v,i)=>{
+      const x = (i/(pingHistory.length-1)) * (w-2) + 1;
+      const y = h - ((v-min)/range) * (h-2) - 1;
+      if(i===0) sctx.moveTo(x,y); else sctx.lineTo(x,y);
+    });
+    sctx.stroke();
+  }
+
+  function startPing(){
+    if(pingTimer) clearInterval(pingTimer);
+    pingHistory.length = 0;
+    let base = randInt(18, 120);
+    const cap = 50; // max points in sparkline
+    const update = ()=>{
+      const jitter = randInt(-8,8);
+      base = clamp(base + jitter, 12, 240);
+      pingVal.textContent = base + " ms";
+      pingHistory.push(base);
+      if(pingHistory.length>cap) pingHistory.shift();
+      drawSpark();
+    };
+    update();
+    pingTimer = setInterval(update, 1000);
+  }
+
+  /* =========================================================================
+     PERIODIC LOAD UPDATES
+     ========================================================================= */
+  function updateLoads(){
+    const rings = [...markersG.querySelectorAll('circle.ring')];
+    rings.forEach(r=>{
+      let l = Number(r.dataset.load);
+      l = clamp(l + randInt(-6,6), 8, 98);
+      r.dataset.load = l;
+      r.setAttribute('stroke', colorForLoad(l));
+      if(selected){
+        const parent = r.parentNode;
+        if(parent && parent.dataset.name === selected.name){ loadVal.textContent = l + "%"; }
+      }
+    });
+  }
+
+  /* =========================================================================
+     SERVER LIST INIT + MARKERS + AUTO SELECT
+     ========================================================================= */
+  renderServerList();
+  renderMarkers();
+  setTimeout(()=>{
+    const idx = randInt(0, SERVERS.length-1);
+    const s = SERVERS[idx];
+    const node = [...markersG.querySelectorAll('g.marker')][idx];
+    if(node) selectServer(s, node);
+  }, 300);
+
+  // periodic load updates
+  updateLoads();
+  loadTick = setInterval(updateLoads, 2500);
+
+  /* =========================================================================
+     USB EXPORT (progress + log)
+     ========================================================================= */
+  const usbBar = $('#usbBar');
+  const usbLog = $('#usbLog');
+  $('#btnUSB').onclick = ()=>{
+    show('usb');
+    usbBar.style.width="0%";
+    usbLog.textContent="";
+    const files = [
+      "session.conf", "keys.enc", "routes.tbl", "firewall.rules", "dns.sec", "logs.bin"
+    ];
+    let p=0, i=0, f=0;
+    const tick = setInterval(()=>{
+      p = clamp(p + randInt(4,9), 0, 100);
+      usbBar.style.width = p+"%";
+      if(i < 6){
+        appendLog(usbLog, `Packing ${files[i]} … `, "");
+        setTimeout(()=> appendLog(usbLog, "OK", "ok"), 180);
+        i++;
+      }else if(f<10){
+        const blk = 1024 + f*randInt(8,64);
+        appendLog(usbLog, `Writing sector ${blk} … `, "");
+        setTimeout(()=> appendLog(usbLog, "OK", "ok"), 160);
+        f++;
+      }
+      if(p>=100){ clearInterval(tick); appendLog(usbLog, "Export complete — Safe to remove.", "ok"); }
+    }, 220);
+  };
+  $('#btnBackToMap').onclick = ()=> show('map');
+
+  /* =========================================================================
+     TOOLTIP FOLLOW ON MOUSEMOVE OVER MAP (for position updates)
+     ========================================================================= */
+  world.addEventListener('mousemove', e=>{
+    // If tooltip is visible, keep it near cursor
+    if(tooltip.style.display==='block'){
+      tooltip.style.left = e.clientX+'px';
+      tooltip.style.top  = e.clientY+'px';
+    }
+  });
+
+  /* =========================================================================
+     BOOT START
+     ========================================================================= */
+  ipVal.textContent = ipRand();
+  bootRun();
+
+})();
+</script>
+</body>
+</html>
